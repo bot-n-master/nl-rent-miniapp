@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <meta name="color-scheme" content="light dark"/>
+    <link rel="stylesheet" href="css/pico.min.css"/>
+    <link rel="stylesheet" href="css/pico.colors.min.css"/>
+    <link rel="stylesheet" href="styles.css">
+    <title>Property Search</title>
+</head>
+<body>
+<main class="container">
+    <h1>Property Search</h1>
+    <form id="searchForm">
+        <article>
+            <header>Price, €/mo</header>
+            <fieldset role="group">
+                <input id="minPrice" name="minPrice" type="number" placeholder="Min" autocomplete="minPrice"/>
+                <input id="maxPrice" name="maxPrice" type="number" placeholder="Max" autocomplete="maxPrice"/>
+            </fieldset>
+            <div id="error-price" class="error-message"></div>
+            <label>Include unknown:
+                <input type="checkbox" name="unknownPrice" id="unknownPrice">
+            </label>
+        </article>
+
+        <article>
+            <header>Size, m²</header>
+            <fieldset role="group">
+                <input id="minSize" name="minSize" type="number" placeholder="Min" autocomplete="minSize"/>
+                <input id="maxSize" name="maxSize" type="number" placeholder="Max" autocomplete="maxSize"/>
+            </fieldset>
+            <div id="error-size" class="error-message"></div>
+            <label>Include unknown:
+                <input type="checkbox" name="unknownSize" id="unknownSize">
+            </label>
+        </article>
+
+        <article>
+            <header>Rooms</header>
+            <fieldset role="group">
+                <input id="minRooms" name="minRooms" type="number" placeholder="Min" autocomplete="minRooms"/>
+                <input id="maxRooms" name="maxRooms" type="number" placeholder="Max" autocomplete="maxRooms"/>
+            </fieldset>
+            <div id="error-rooms" class="error-message"></div>
+            <label>Include unknown:
+                <input type="checkbox" name="unknownRooms" id="unknownRooms">
+            </label>
+        </article>
+
+        <article>
+            <header>Year of construction</header>
+            <fieldset role="group">
+                <input id="minYear" name="minYear" type="number" placeholder="Min" autocomplete="minYear"/>
+                <input id="maxYear" name="maxYear" type="number" placeholder="Max" autocomplete="maxYear"/>
+            </fieldset>
+            <div id="error-year" class="error-message"></div>
+            <label>Include unknown:
+                <input type="checkbox" name="unknownYear" id="unknownYear">
+            </label>
+        </article>
+
+        <article>
+            <header>Worst energy label</header>
+            <select id="energyLabel" name="energyLabel">
+                <option value="">Any</option>
+                <option value="A+++++">A+++++</option>
+                <option value="A++++">A++++</option>
+                <option value="A+++">A+++</option>
+                <option value="A++">A++</option>
+                <option value="A+">A+</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+                <option value="E">E</option>
+                <option value="F">F</option>
+                <option value="G">G</option>
+            </select>
+            <label>Include unknown:
+                <input type="checkbox" name="unknownEnergyLabel" id="unknownEnergyLabel">
+            </label>
+        </article>
+
+        <article>
+            <header>Location</header>
+            <div id="map"></div>
+            <label for="radius">Radius: <span id="radiusText">1000</span> m</label>
+            <input id="radius" type="range" name="radius" min="100" max="5000" value="1000"
+                   onchange="updateRadius(this.value)" oninput="updateRadius(this.value)">
+        </article>
+
+        <input type="hidden" id="latitude" name="latitude" value="52.37281">
+        <input type="hidden" id="longitude" name="longitude" value="4.89370">
+        <input type="submit" value="Done">
+
+    </form>
+</main>
+
+<!-- Load the Google Maps JavaScript API -->
+<script>
+    (g => {
+        var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__",
+            m = document, b = window;
+        b = b[c] || (b[c] = {});
+        var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams,
+            u = () => h || (h = new Promise(async (f, n) => {
+                await (a = m.createElement("script"));
+                e.set("libraries", [...r] + "");
+                for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]);
+                e.set("callback", c + ".maps." + q);
+                a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+                d[q] = f;
+                a.onerror = () => h = n(Error(p + " could not load."));
+                a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+                m.head.append(a)
+            }));
+        d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n))
+    })({
+        key: "AIzaSyCSVBqThlzM8kHB0hjHubeXFaU4pw4n0ag",
+        v: "weekly",
+        // Use the 'v' parameter to indicate the version to use (weekly, beta, alpha, etc.).
+        // Add other bootstrap parameters as needed, using camel case.
+    });
+</script>
+<!-- Load the Telegram Web App JS SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Load the Just-validate library -->
+<script src="https://unpkg.com/just-validate@latest/dist/just-validate.production.min.js"></script>
+
+<script>
+    async function initMap() {
+        const {Map} = await google.maps.importLibrary("maps");
+        const {AdvancedMarkerElement} = await google.maps.importLibrary("marker");
+        const center = {lat: parseFloat(latitudeElem.value), lng: parseFloat(longitudeElem.value)};
+        const radius = parseInt(radiusElem.value);
+
+        const map = new Map(document.getElementById("map"), {
+            center: center,
+            zoom: 14,
+            mapId: "f20a7fa4750b4adb",
+        });
+
+        const pin = new AdvancedMarkerElement({
+            map,
+            position: center,
+            draggable: true,
+        });
+
+        circle = new google.maps.Circle({
+            map,
+            center: center,
+            radius: radius,
+            fillColor: "#FF0000",
+            fillOpacity: 0.35,
+            strokeWeight: 1,
+            strokeColor: "#FF0000",
+            strokeOpacity: 0.8,
+        });
+        updateRadius(radius.toString());
+
+        // marker stays in the center of the map
+        map.addListener("center_changed", () => {
+            pin.position = map.center;
+            circle.setCenter(map.center);
+            latitudeElem.value = map.center.lat();
+            longitudeElem.value = map.center.lng();
+        });
+    }
+
+    function hideMap() {
+        document.getElementById("map").classList.add("hidden");
+    }
+
+    function updateRadius(value) {
+        circle.setRadius(parseInt(value));
+        radiusTextElem.innerHTML = value;
+    }
+
+    // send all form fields as JSON to the Telegram app
+    function submitForm() {
+        let data = {};
+        for (let i = 0; i < formElem.length; i++) {
+            if (formElem.elements[i].name) {
+                if (formElem.elements[i].type === "checkbox") {
+                    data[formElem.elements[i].name] = formElem.elements[i].checked;
+                } else {
+                    data[formElem.elements[i].name] = formElem.elements[i].value;
+                }
+            }
+        }
+        let json = JSON.stringify(data);
+        if (isTelegram) {
+            if (debug) {
+                alert("Sending data to the app: " + json);
+            }
+            Telegram.WebApp.sendData(json);
+        } else {
+            alert("No send data: " + json);
+        }
+    }
+
+
+    let isTelegram = false;
+    let circle;
+    let revalidation = false;
+
+    const radiusTextElem = document.getElementById("radiusText");
+    const formElem = document.getElementById("searchForm");
+    const latitudeElem = document.getElementById("latitude");
+    const longitudeElem = document.getElementById("longitude");
+    const radiusElem = document.getElementById("radius");
+    const validator = new JustValidate('#searchForm').onSuccess(submitForm);
+
+    const url = new URL(location.href);
+    const debug = url.searchParams.get('debug') === 'true';
+    const params = atob(url.searchParams.get('params') || '');
+
+    // setup initial values
+    if (params) {
+        const data = JSON.parse(params);
+        for (let key in data) {
+            const elem = document.getElementById(key);
+            if (elem) {
+                if (elem.type === "checkbox") {
+                    elem.checked = data[key];
+                } else {
+                    elem.value = data[key];
+                }
+            }
+        }
+    }
+    // setup initial values
+
+    // init Telegram
+    Telegram.WebApp.ready();
+    isTelegram = Telegram.WebApp.platform !== "unknown";
+    if (!isTelegram) {
+        setTimeout(() => alert("Telegram Web App is not available"), 1);
+    }
+    // init Telegram
+
+    // init map
+    if (debug || !isTelegram) {
+        hideMap();
+    } else {
+        initMap();
+    }
+    // init map
+
+    validator
+        .addField('#minPrice', [
+            {rule: 'integer', errorMessage: 'Min price must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#maxPrice'
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const maxPrice = fields[boundFieldId].elem.value;
+                    return maxPrice === '' || value === '' || parseInt(value) <= parseInt(maxPrice);
+                },
+                errorMessage: 'Min price must be less than max price'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Min price must be greater than 0'},
+            {rule: 'maxNumber', value: 100000, errorMessage: 'Min price must be less than 100000'},
+        ], {errorsContainer: '#error-price'})
+        .addField('#maxPrice', [
+            {rule: 'integer', errorMessage: 'Max price must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#minPrice';
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const minPrice = fields[boundFieldId].elem.value;
+                    return minPrice === '' || value === '' || parseInt(value) >= parseInt(minPrice);
+                },
+                errorMessage: 'Max price must be greater than min price'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Max price must be greater than 0'},
+            {rule: 'maxNumber', value: 100000, errorMessage: 'Max price must be less than 100000'},
+        ], {errorsContainer: '#error-price'})
+        .addField('#minSize', [
+            {rule: 'integer', errorMessage: 'Min size must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#maxSize'
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const maxSize = fields[boundFieldId].elem.value;
+                    return maxSize === '' || value === '' || parseInt(value) <= parseInt(maxSize);
+                },
+                errorMessage: 'Min size must be less than max size'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Min size must be greater than 0'},
+            {rule: 'maxNumber', value: 1000, errorMessage: 'Min size must be less than 1000'}
+        ], {errorsContainer: '#error-size'})
+        .addField('#maxSize', [
+            {rule: 'integer', errorMessage: 'Max size must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#minSize';
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const minSize = fields[boundFieldId].elem.value;
+                    return minSize === '' || value === '' || parseInt(value) >= parseInt(minSize);
+                },
+                errorMessage: 'Max size must be greater than min size'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Max size must be greater than 0'},
+            {rule: 'maxNumber', value: 1000, errorMessage: 'Max size must be less than 1000'},
+        ], {errorsContainer: '#error-size'})
+        .addField('#minRooms', [
+            {rule: 'integer', errorMessage: 'Min rooms must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#maxRooms'
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const maxRooms = fields[boundFieldId].elem.value;
+                    return maxRooms === '' || value === '' || parseInt(value) <= parseInt(maxRooms);
+                },
+                errorMessage: 'Min rooms must be less than max rooms'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Min rooms must be greater than 0'},
+            {rule: 'maxNumber', value: 20, errorMessage: 'Min rooms must be less than 20'},
+        ], {errorsContainer: '#error-rooms'})
+        .addField('#maxRooms', [
+            {rule: 'integer', errorMessage: 'Max rooms must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#minRooms';
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const minRooms = fields[boundFieldId].elem.value;
+                    return minRooms === '' || value === '' || parseInt(value) >= parseInt(minRooms);
+                },
+                errorMessage: 'Max rooms must be greater than min rooms'
+            },
+            {rule: 'minNumber', value: 0, errorMessage: 'Max rooms must be greater than 0'},
+            {rule: 'maxNumber', value: 20, errorMessage: 'Max rooms must be less than 20'},
+        ], {errorsContainer: '#error-rooms'})
+        .addField('#minYear', [
+            {rule: 'integer', errorMessage: 'Min year must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#maxYear'
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const maxYear = fields[boundFieldId].elem.value;
+                    return maxYear === '' || value === '' || parseInt(value) <= parseInt(maxYear);
+                },
+                errorMessage: 'Min year must be less than max year'
+            },
+            {rule: 'minNumber', value: 1800, errorMessage: 'Min year must be greater than 1800'},
+            {
+                rule: 'maxNumber',
+                value: new Date().getFullYear(),
+                errorMessage: 'Min year must be less than current year'
+            },
+        ], {errorsContainer: '#error-year'})
+        .addField('#maxYear', [
+            {rule: 'integer', errorMessage: 'Max year must be an integer'},
+            {
+                validator: (value, fields) => {
+                    const boundFieldId = '#minYear';
+                    if (validator.isSubmitted && !revalidation) {
+                        revalidation = true;
+                        validator.revalidateField(boundFieldId).then(() => {
+                        });
+                        revalidation = false;
+                    }
+
+                    const minYear = fields[boundFieldId].elem.value;
+                    return minYear === '' || value === '' || parseInt(value) >= parseInt(minYear);
+                },
+                errorMessage: 'Max year must be greater than min year'
+            },
+            {rule: 'minNumber', value: 1800, errorMessage: 'Max year must be greater than 1800'},
+            {
+                rule: 'maxNumber',
+                value: new Date().getFullYear(),
+                errorMessage: 'Max year must be less than current year'
+            },
+        ], {errorsContainer: '#error-year'})
+</script>
+
+</body>
+</html>
